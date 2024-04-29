@@ -14,24 +14,29 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef RAW_ENABLE
-#    error "RAW_ENABLE is not enabled"
-#endif
-
-#ifndef DYNAMIC_KEYMAP_ENABLE
-#    error "DYNAMIC_KEYMAP_ENABLE is not enabled"
-#endif
 
 #include "via.h"
 
 #include "raw_hid.h"
 #include "dynamic_keymap.h"
 #include "eeprom.h"
-#include "eeconfig.h"
-#include "matrix.h"
-#include "timer.h"
-#include "wait.h"
-#include "version.h" // for QMK_BUILDDATE used in EEPROM magic
+#include "time.h"
+
+#define QMK_BUILDDATE "2024-01-01-00:00:00"
+#define QK_MACRO 0x7700
+#define QK_MACRO_MAX 0x777F
+
+#define MATRIX_COLS 3
+#define MATRIX_ROWS 1
+#if (MATRIX_COLS <= 8)
+typedef uint8_t matrix_row_t;
+#elif (MATRIX_COLS <= 16)
+typedef uint16_t matrix_row_t;
+#elif (MATRIX_COLS <= 32)
+typedef uint32_t matrix_row_t;
+#else
+#    error "MATRIX_COLS: invalid value"
+#endif
 
 #if defined(AUDIO_ENABLE)
 #    include "audio.h"
@@ -65,7 +70,7 @@ bool via_eeprom_is_valid(void) {
     uint8_t magic1 = ((p[5] & 0x0F) << 4) | (p[6] & 0x0F);
     uint8_t magic2 = ((p[8] & 0x0F) << 4) | (p[9] & 0x0F);
 
-    return (eeprom_read_byte((void *)VIA_EEPROM_MAGIC_ADDR + 0) == magic0 && eeprom_read_byte((void *)VIA_EEPROM_MAGIC_ADDR + 1) == magic1 && eeprom_read_byte((void *)VIA_EEPROM_MAGIC_ADDR + 2) == magic2);
+    return (eeprom_read_byte(VIA_EEPROM_MAGIC_ADDR + 0) == magic0 && eeprom_read_byte(VIA_EEPROM_MAGIC_ADDR + 1) == magic1 && eeprom_read_byte(VIA_EEPROM_MAGIC_ADDR + 2) == magic2);
 }
 
 // Sets VIA/keyboard level usage of EEPROM to valid/invalid
@@ -76,9 +81,9 @@ void via_eeprom_set_valid(bool valid) {
     uint8_t magic1 = ((p[5] & 0x0F) << 4) | (p[6] & 0x0F);
     uint8_t magic2 = ((p[8] & 0x0F) << 4) | (p[9] & 0x0F);
 
-    eeprom_update_byte((void *)VIA_EEPROM_MAGIC_ADDR + 0, valid ? magic0 : 0xFF);
-    eeprom_update_byte((void *)VIA_EEPROM_MAGIC_ADDR + 1, valid ? magic1 : 0xFF);
-    eeprom_update_byte((void *)VIA_EEPROM_MAGIC_ADDR + 2, valid ? magic2 : 0xFF);
+    eeprom_write_byte(VIA_EEPROM_MAGIC_ADDR + 0, valid ? magic0 : 0xFF);
+    eeprom_write_byte(VIA_EEPROM_MAGIC_ADDR + 1, valid ? magic1 : 0xFF);
+    eeprom_write_byte(VIA_EEPROM_MAGIC_ADDR + 2, valid ? magic2 : 0xFF);
 }
 
 // Override this at the keyboard code level to check
@@ -87,13 +92,13 @@ void via_eeprom_set_valid(bool valid) {
 // for backlight, rotary encoders, etc.
 // The override should not set via_eeprom_set_valid(true) as
 // the caller also needs to check the valid state.
-__attribute__((weak)) void via_init_kb(void) {}
+// void via_init_kb(void) {}
 
 // Called by QMK core to initialize dynamic keymaps etc.
 void via_init(void) {
     // Let keyboard level test EEPROM valid state,
     // but not set it valid, it is done here.
-    via_init_kb();
+    // via_init_kb();
     via_set_layout_options_kb(via_get_layout_options());
 
     // If the EEPROM has the magic, the data is good.
@@ -121,7 +126,7 @@ void eeconfig_init_via(void) {
 uint32_t via_get_layout_options(void) {
     uint32_t value = 0;
     // Start at the most significant byte
-    void *source = (void *)(VIA_EEPROM_LAYOUT_OPTIONS_ADDR);
+    uint8_t source = VIA_EEPROM_LAYOUT_OPTIONS_ADDR;
     for (uint8_t i = 0; i < VIA_EEPROM_LAYOUT_OPTIONS_SIZE; i++) {
         value = value << 8;
         value |= eeprom_read_byte(source);
@@ -130,14 +135,14 @@ uint32_t via_get_layout_options(void) {
     return value;
 }
 
-__attribute__((weak)) void via_set_layout_options_kb(uint32_t value) {}
+// void via_set_layout_options_kb(uint32_t value) {}
 
 void via_set_layout_options(uint32_t value) {
-    via_set_layout_options_kb(value);
+    // via_set_layout_options_kb(value);
     // Start at the least significant byte
-    void *target = (void *)(VIA_EEPROM_LAYOUT_OPTIONS_ADDR + VIA_EEPROM_LAYOUT_OPTIONS_SIZE - 1);
+    uint8_t target = VIA_EEPROM_LAYOUT_OPTIONS_ADDR + VIA_EEPROM_LAYOUT_OPTIONS_SIZE - 1;
     for (uint8_t i = 0; i < VIA_EEPROM_LAYOUT_OPTIONS_SIZE; i++) {
-        eeprom_update_byte(target, value & 0xFF);
+        eeprom_write_byte(target, value & 0xFF);
         value = value >> 8;
         target--;
     }
@@ -153,7 +158,7 @@ float via_device_indication_song[][2] = SONG(STARTUP_SOUND);
 // with an incrementing value starting at zero. Since this function is called
 // an even number of times, it can call a toggle function and leave things in
 // the original state.
-__attribute__((weak)) void via_set_device_indication(uint8_t value) {
+void via_set_device_indication(uint8_t value) {
 #if defined(BACKLIGHT_ENABLE)
     backlight_toggle();
 #endif // BACKLIGHT_ENABLE
@@ -175,9 +180,9 @@ __attribute__((weak)) void via_set_device_indication(uint8_t value) {
 }
 
 // Called by QMK core to process VIA-specific keycodes.
-bool process_record_via(uint16_t keycode, keyrecord_t *record) {
+bool process_record_via(uint16_t keycode, fak_key_event_t *record) {
     // Handle macros
-    if (record->event.pressed) {
+    if (record->pressed) {
         if (keycode >= QK_MACRO && keycode <= QK_MACRO_MAX) {
             uint8_t id = keycode - QK_MACRO;
             dynamic_keymap_macro_send(id);
@@ -206,7 +211,7 @@ bool process_record_via(uint16_t keycode, keyrecord_t *record) {
 
 // This is the default handler for "extra" custom values, i.e. keyboard-specific custom values
 // that are not handled by via_custom_value_command().
-__attribute__((weak)) void via_custom_value_command_kb(uint8_t *data, uint8_t length) {
+void via_custom_value_command_kb(uint8_t *data, uint8_t length) {
     // data = [ command_id, channel_id, value_id, value_data ]
     uint8_t *command_id = &(data[0]);
     // Return the unhandled state
@@ -222,7 +227,7 @@ __attribute__((weak)) void via_custom_value_command_kb(uint8_t *data, uint8_t le
 //      id_qmk_led_matrix_channel   ->  via_qmk_led_matrix_command()
 //      id_qmk_audio_channel        ->  via_qmk_audio_command()
 //
-__attribute__((weak)) void via_custom_value_command(uint8_t *data, uint8_t length) {
+void via_custom_value_command(uint8_t *data, uint8_t length) {
     // data = [ command_id, channel_id, value_id, value_data ]
     uint8_t *channel_id = &(data[1]);
 
@@ -272,7 +277,7 @@ __attribute__((weak)) void via_custom_value_command(uint8_t *data, uint8_t lengt
 // Keyboard level code can override this, but shouldn't need to.
 // Controlling custom features should be done by overriding
 // via_custom_value_command_kb() instead.
-__attribute__((weak)) bool via_command_kb(uint8_t *data, uint8_t length) {
+bool via_command_kb(uint8_t *data, uint8_t length) {
     return false;
 }
 
@@ -315,17 +320,18 @@ void raw_hid_receive(uint8_t *data, uint8_t length) {
                     uint8_t rows   = 28 / ((MATRIX_COLS + 7) / 8);
                     uint8_t i      = 2;
                     for (uint8_t row = 0; row < rows && row + offset < MATRIX_ROWS; row++) {
-                        matrix_row_t value = matrix_get_row(row + offset);
-#if (MATRIX_COLS > 24)
-                        command_data[i++] = (value >> 24) & 0xFF;
-#endif
-#if (MATRIX_COLS > 16)
-                        command_data[i++] = (value >> 16) & 0xFF;
-#endif
-#if (MATRIX_COLS > 8)
-                        command_data[i++] = (value >> 8) & 0xFF;
-#endif
-                        command_data[i++] = value & 0xFF;
+// todo
+//                         matrix_row_t value = matrix_get_row(row + offset);
+// #if (MATRIX_COLS > 24)
+//                         command_data[i++] = (value >> 24) & 0xFF;
+// #endif
+// #if (MATRIX_COLS > 16)
+//                         command_data[i++] = (value >> 16) & 0xFF;
+// #endif
+// #if (MATRIX_COLS > 8)
+//                         command_data[i++] = (value >> 8) & 0xFF;
+// #endif
+//                         command_data[i++] = value & 0xFF;
                     }
                     break;
                 }

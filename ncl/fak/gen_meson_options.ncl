@@ -13,10 +13,11 @@ let use_soft_serial = std.record.has_field "SPLIT_SOFT_SERIAL_PIN" ir.defines in
 
 {
   split = ir.defines.SPLIT_ENABLE,
-  extra_sources = as_sources 
+  extra_sources = as_sources
   {
     "src/hold_tap.c" = ir.defines.HOLD_TAP_ENABLE,
     "src/tap_dance.c" = ir.defines.TAP_DANCE_ENABLE,
+    "src/via.c" = ir.defines.VIA_ENABLE,
     "src/combo.c" = ir.defines.COMBO_COUNT > 0,
     "src/encoder.c" = ir.defines.ENCODER_COUNT > 0,
     "src/mouse.c" = ir.defines.MOUSE_KEYS_ENABLE,

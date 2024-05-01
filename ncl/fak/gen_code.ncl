@@ -31,7 +31,7 @@ let rec codegen = {
     |> std.array.map codegen_define
     |> std.array.filter (fun s => s != "")
     |> util.array.join "\n",
-  
+
   pin_def = fun i pin prefix =>
     let port = std.to_string (std.number.truncate (pin / 10)) in
     let port_idx = std.to_string (pin % 10) in
@@ -45,6 +45,8 @@ let h_file = m%"
   %{codegen.defines ir.defines}
 
   #include "keyboard.h"
+
+  #include "neo.h"
 
   void keyboard_init_user();
   void keyboard_scan_user();
@@ -104,7 +106,7 @@ m%"
 
   %{
     if std.array.length ir.encoder_defs > 0 then
-      let defs = std.array.map (fun enc => 
+      let defs = std.array.map (fun enc =>
         {
           resolution = enc.resolution,
           key_idx_cw = enc.key_idx_cw,
@@ -164,7 +166,7 @@ let c_file =
       out_mapping
       |> util.array.enumerate
       |> std.array.filter (fun { index, value } => value >= 0)
-      |> std.array.map (fun { index, value } => 
+      |> std.array.map (fun { index, value } =>
           let pin_idx = std.array.at index ins in
           let key_idx = value in
           key_state_inform key_idx in_prefix pin_idx
@@ -210,6 +212,16 @@ m%"
     |> util.array.join "\n"
   }
 
+
+  // Update NeoPixels
+  void NEO_update(void) {
+    EA = 0;                                   // disable interrupts
+    NEO_writeColor(0xff, 0x66, 0x66);               // NeoPixel 1 lights up red
+    NEO_writeColor(0xff, 0x66, 0x66);               // NeoPixel 1 lights up red
+    NEO_writeColor(0xff, 0x66, 0x66);               // NeoPixel 1 lights up red
+    EA = 1;                                   // enable interrupts
+  }
+
   void keyboard_init_user() {
   %{
     [[ir.kscan.cols, "COL"], [ir.kscan.rows, "ROW"]]
@@ -223,6 +235,9 @@ m%"
     )
     |> util.array.join "\n"
   }
+    NEO_init();
+    NEO_latch();
+    NEO_update();
   }
 
   static void matrix_switch_delay() {

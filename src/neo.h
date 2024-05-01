@@ -16,11 +16,11 @@
 #pragma once
 #include <stdint.h>
 #include "gpio.h"
-#include "time.h"
+#include "delay.h"
 
 #define NEO_GRB
 #define PIN_NEO             P34
-#define FREQ_SYS 16000000
+#define FREQ_SYS 24000000
 
 #define NEO_init()  PIN_low(PIN_NEO);PIN_output(PIN_NEO)  // init NeoPixels
 #define NEO_latch() DLY_us(281)                           // latch colors
